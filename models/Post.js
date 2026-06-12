@@ -11,9 +11,4 @@ const PostSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-// 🔴 Add these indexes for faster queries!
-PostSchema.index({ slug: 1 }); // Index for slug lookup
-PostSchema.index({ createdAt: -1 }); // Index for sorting by date
-PostSchema.index({ author: 1 }); // Index for author queries
-
 module.exports = mongoose.model("Post", PostSchema);
