@@ -4,25 +4,32 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const router = express.Router();
 
-// ✅ REGISTER
+// POST /api/auth/register
 router.post("/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    // Validate input
     if (!username || !email || !password) {
-      return res.status(400).json({ error: "All fields required" });
+      return res.status(400).json({ error: "All fields are required" });
+    }
+    if (password.length < 6) {
+      return res
+        .status(400)
+        .json({ error: "Password must be at least 6 characters" });
     }
 
-    // Check if user exists
-    const exists = await User.findOne({ email: email.toLowerCase() });
-    if (exists)
-      return res.status(400).json({ error: "Email already registered" });
+    // Check both username and email uniqueness in one query
+    const exists = await User.findOne({
+      $or: [{ email: email.toLowerCase() }, { username }],
+    });
+    if (exists) {
+      const field = exists.email === email.toLowerCase() ? "email" : "username";
+      return res
+        .status(400)
+        .json({ error: `That ${field} is already registered` });
+    }
 
-    // Hash password
-    const hashed = await bcrypt.hash(password, 10);
-
-    // Save user
+    const hashed = await bcrypt.hash(password, 12);
     const user = await User.create({
       username,
       email: email.toLowerCase(),
@@ -30,60 +37,52 @@ router.post("/register", async (req, res) => {
     });
 
     res.status(201).json({
-      message: "✅ Account created!",
-      user: { id: user._id, username: user.username },
+      message: "Account created successfully",
+      user: { id: user._id, username: user.username, email: user.email },
     });
   } catch (err) {
-    console.error("Register Error:", err);
-    res.status(500).json({ error: err.message });
+    console.error("Register error:", err);
+    res.status(500).json({ error: "Registration failed. Please try again." });
   }
 });
 
-// ✅ LOGIN
+// POST /api/auth/login
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validate input
     if (!email || !password) {
-      return res.status(400).json({ error: "Email and password required" });
-    }
-
-    // Find user (use lowercase)
-    const user = await User.findOne({ email: email.toLowerCase() });
-    console.log("User found:", user ? "Yes" : "No");
-
-    if (!user) {
       return res
-        .status(404)
-        .json({ error: "User not found. Please register first." });
+        .status(400)
+        .json({ error: "Email and password are required" });
     }
 
-    // Check password
-    console.log("Comparing passwords...");
+    const user = await User.findOne({ email: email.toLowerCase() }).select(
+      "+password"
+    );
+    // Use a generic message to avoid user enumeration
+    if (!user) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
     const match = await bcrypt.compare(password, user.password);
-    console.log("Password match:", match);
-
     if (!match) {
-      return res.status(401).json({ error: "Wrong password" });
+      return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // Create token
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
+    const token = jwt.sign(
+      { id: user._id, username: user.username },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
     res.json({
       token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-      },
+      user: { id: user._id, username: user.username, email: user.email },
     });
   } catch (err) {
-    console.error("Login Error:", err);
-    res.status(500).json({ error: err.message });
+    console.error("Login error:", err);
+    res.status(500).json({ error: "Login failed. Please try again." });
   }
 });
 
